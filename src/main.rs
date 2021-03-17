@@ -13,6 +13,8 @@ mod line_buffer;
 mod engine;
 use engine::{print_message, Engine};
 
+mod history;
+
 // this fn is totally ripped off from crossterm's examples
 // it's really a diagnostic routine to see if crossterm is
 // even seeing the events. if you press a key and no events

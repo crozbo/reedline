@@ -8,11 +8,10 @@ use crossterm::{
     ExecutableCommand, QueueableCommand, Result,
 };
 
-use std::collections::VecDeque;
 
 use crate::line_buffer::LineBuffer;
+use crate::history::History;
 
-const HISTORY_SIZE: usize = 100;
 
 pub enum EditCommand {
     MoveToStart,
@@ -41,10 +40,7 @@ pub struct Engine {
     // Cut buffer
     cut_buffer: String,
 
-    // History
-    history: VecDeque<String>,
-    history_cursor: i64,
-    has_history: bool,
+    history: History,
 }
 
 pub fn print_message(stdout: &mut Stdout, msg: &str) -> Result<()> {
@@ -85,17 +81,13 @@ fn buffer_repaint(stdout: &mut Stdout, engine: &Engine, prompt_offset: u16) -> R
 
 impl Engine {
     pub fn new() -> Engine {
-        let history = VecDeque::with_capacity(HISTORY_SIZE);
-        let history_cursor = -1i64;
-        let has_history = false;
+        let history = History::new();
         let cut_buffer = String::new();
 
         Engine {
             line_buffer: LineBuffer::new(),
             cut_buffer,
             history,
-            history_cursor,
-            has_history,
         }
     }
 
@@ -140,46 +132,19 @@ impl Engine {
                     self.set_insertion_point(0);
                 }
                 EditCommand::AppendToHistory => {
-                    if self.history.len() + 1 == HISTORY_SIZE {
-                        // History is "full", so we delete the oldest entry first,
-                        // before adding a new one.
-                        self.history.pop_back();
-                    }
-                    self.history.push_front(String::from(self.get_buffer()));
-                    self.has_history = true;
-                    // reset the history cursor - we want to start at the bottom of the
-                    // history again.
-                    self.history_cursor = -1;
+                    self.history.append(String::from(self.get_buffer()));
                 }
                 EditCommand::PreviousHistory => {
-                    if self.has_history && self.history_cursor < (self.history.len() as i64 - 1) {
-                        self.history_cursor += 1;
-                        let history_entry = self
-                            .history
-                            .get(self.history_cursor as usize)
-                            .unwrap()
-                            .clone();
-                        self.set_buffer(history_entry.clone());
+                    if let Some(s) = self.history.previous(){
+                        self.set_buffer(s);
                         self.move_to_end();
                     }
                 }
                 EditCommand::NextHistory => {
-                    if self.history_cursor >= 0 {
-                        self.history_cursor -= 1;
+                    if let Some(s) = self.history.next(){
+                        self.set_buffer(s);
+                        self.move_to_end();
                     }
-                    let new_buffer = if self.history_cursor < 0 {
-                        String::new()
-                    } else {
-                        // We can be sure that we always have an entry on hand, that's why
-                        // unwrap is fine.
-                        self.history
-                            .get(self.history_cursor as usize)
-                            .unwrap()
-                            .clone()
-                    };
-
-                    self.set_buffer(new_buffer.clone());
-                    self.move_to_end();
                 }
                 EditCommand::CutFromStart => {
                     if self.get_insertion_point() > 0 {
